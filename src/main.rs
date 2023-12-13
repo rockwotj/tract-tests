@@ -35,6 +35,10 @@ impl BertQuestionAnswerer {
                 .model_for_path(model)?
                 .into_optimized()?
                 .into_runnable()?,
+            Some("nnef") => tract_nnef::nnef()
+                .model_for_path(model)?
+                .into_optimized()?
+                .into_runnable()?,
             _ => bail!("unexpected model file extension {:?}", model.as_ref().extension()),
         };
         return Ok(Self { tokenizer, model });
@@ -220,7 +224,7 @@ impl BertQuestionAnswerer {
 }
 
 fn main() -> Result<()> {
-    let oracle = BertQuestionAnswerer::new_from_files("./vocab.txt", "./mobilebert.onnx")?;
+    let oracle = BertQuestionAnswerer::new_from_files("./vocab.txt", "./mobilebert-opt.nnef")?;
     const PASSAGE: &str = "TensorFlow is a free and open-source software library for dataflow and \
 differentiable programming across a range of tasks. It is a symbolic math library, and \
 is also used for machine learning applications such as neural networks. It is used for \

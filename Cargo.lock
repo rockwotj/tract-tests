@@ -72,6 +72,7 @@ dependencies = [
  "itertools 0.12.0",
  "regex",
  "rust_tokenizers",
+ "tract-nnef",
  "tract-onnx",
  "tract-tflite",
  "unicode-normalization",
