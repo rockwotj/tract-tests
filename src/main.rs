@@ -3,6 +3,7 @@
 mod tokenizer;
 
 use itertools::Itertools;
+use ort::Session;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
@@ -10,7 +11,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use tract_onnx::prelude::*;
 
 const PASSAGE: &str = "Google LLC is an American \
 multinational technology company that specializes \
@@ -46,10 +46,11 @@ fn main() -> Result<()> {
     let vocab_path: PathBuf = PathBuf::from("./vocab.txt");
     let vocab = tokenizer::Vocab::create_from_file(&vocab_path)?;
     let bert_tokenizer = tokenizer::BertTokenizer::new(vocab);
-    let model = tract_onnx::onnx()
-        .model_for_path("./mobilebert.onnx")?
-        .into_optimized()?
-        .into_runnable()?;
+    // let model = tract_onnx::onnx()
+    //     .model_for_path("./mobilebert.onnx")?
+    //     .into_optimized()?
+    //     .into_runnable()?;
+    let model = Session::builder()?.with_model_from_file("mobilebert.onnx")?;
 
     let start = Instant::now();
 
@@ -105,24 +106,26 @@ fn main() -> Result<()> {
     let input_ids = bert_tokenizer.convert_to_ids(&tokens);
     let input_mask = vec![1, input_ids.len()];
 
-    let input_ids_tensor: Tensor = create_input_tensor(
+    let input_ids_tensor = create_input_tensor(
         input_ids
             .iter()
             .map(|i| i32::try_from(*i))
             .collect::<Result<Vec<_>, _>>()?,
     )?;
-    let input_mask_tensor: Tensor =
+    let input_mask_tensor =
         create_input_tensor(input_mask.into_iter().map(|x| x as i32).collect())?;
-    let segment_ids_tensor: Tensor =
+    let segment_ids_tensor =
         create_input_tensor(segment_ids.into_iter().map(|x| x as i32).collect())?;
 
-    let result = model.run(tvec![
-        input_ids_tensor.into(),
-        input_mask_tensor.into(),
-        segment_ids_tensor.into(),
-    ])?;
-    let end_logits_tensor: &[f32] = result[0].as_slice()?;
-    let start_logits_tensor: &[f32] = result[1].as_slice()?;
+    let result = model.run(ort::inputs![
+        input_ids_tensor,
+        input_mask_tensor,
+        segment_ids_tensor,
+    ]?)?;
+    let end_logits_tensor = result[0].extract_tensor::<f32>()?;
+    let end_logits_tensor = end_logits_tensor.view().iter().map(|&v| v).collect_vec();
+    let start_logits_tensor = result[1].extract_tensor::<f32>()?;
+    let start_logits_tensor = start_logits_tensor.view().iter().map(|&v| v).collect_vec();
     let start_indexes = candidate_answer_indexes(&start_logits_tensor);
     let end_indexes = candidate_answer_indexes(&end_logits_tensor);
 
@@ -135,7 +138,6 @@ fn main() -> Result<()> {
                     if start > end {
                         return None;
                     }
-                    let logit = start_logits_tensor[start] + end_logits_tensor[end];
                     if end - start > MAX_ANSWER_LEN {
                         return None;
                     }
@@ -152,8 +154,14 @@ fn main() -> Result<()> {
                     if start_index > end_index {
                         return None;
                     }
+                    let start_logit = start_logits_tensor.get(start).map(|&v| v);
+                    let end_logit = end_logits_tensor.get(end).map(|&v| v);
+                    if start_logit.is_none() || end_logit.is_none() {
+                        println!("qux {} {} {} {}", start_logits_tensor.len(), end_logits_tensor.len(), start, end);
+                        return None;
+                    }
                     Some(Prediction {
-                        logit,
+                        logit: start_logit.unwrap() + end_logit.unwrap(),
                         word_range: start_index..=end_index,
                     })
                 })
@@ -189,9 +197,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn create_input_tensor(mut v: Vec<i32>) -> Result<Tensor> {
+fn create_input_tensor(mut v: Vec<i32>) -> Result<ort::Value> {
     v.resize(MAX_TOKENS, 0);
-    Ok(tract_ndarray::Array2::from_shape_vec((1, MAX_TOKENS), v)?.into())
+    let arr = ndarray::Array2::from_shape_vec((1, MAX_TOKENS), v)?;
+    Ok(ort::Value::from_array(arr)?)
 }
 
 fn candidate_answer_indexes(v: &[f32]) -> Vec<usize> {
