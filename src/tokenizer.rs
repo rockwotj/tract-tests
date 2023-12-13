@@ -107,7 +107,10 @@ impl BertTokenizer {
     }
 
     pub fn convert_to_ids(&self, tokens: &[String]) -> Vec<usize> {
-        tokens.iter().map(|t| *self.vocab.ids.get(t).unwrap()).collect()
+        tokens
+            .iter()
+            .map(|t| *self.vocab.ids.get(t).unwrap())
+            .collect()
     }
 }
 
@@ -204,19 +207,59 @@ fn tokenized_with_punctuation(text: &str) -> Vec<String> {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{Vocab, wordpiece_tokenizer};
+    use crate::tokenizer::BertTokenizer;
+
+    use super::{basic_tokenize, wordpiece_tokenizer, CaseSensitive, Vocab};
+
+    #[test]
+    fn base_tokenizer_test() {
+        let test_input = "  Hi, This\tis an example.\n";
+        let expected_result = vec!["Hi", ",", "This", "is", "an", "example", "."];
+
+        assert_eq!(
+            basic_tokenize(test_input, CaseSensitive::Yes),
+            expected_result
+        );
+
+        let test_input = "Hello,How are you?";
+        let expected_result = vec!["Hello", ",", "How", "are", "you", "?"];
+
+        assert_eq!(
+            basic_tokenize(test_input, CaseSensitive::Yes),
+            expected_result
+        );
+    }
 
     #[test]
     fn wordpiece_tokenizer_test() {
-        let vocab = Vocab::create_from_file(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vocab.txt")).unwrap();
+        let vocab =
+            Vocab::create_from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vocab.txt"))
+                .unwrap();
 
-        let input = "unaffable";
-        let output = vec!["una", "##ffa", "##ble"];
+        let input = "meaningfully";
+        let output = vec!["meaningful", "##ly"];
+        assert_eq!(wordpiece_tokenizer(&vocab, input), output);
+
+        let input = "teacher";
+        let output = vec!["teacher"];
         assert_eq!(wordpiece_tokenizer(&vocab, input), output);
 
         let input = "unaffableX";
         let output = vec!["[UNK]"];
         assert_eq!(wordpiece_tokenizer(&vocab, input), output);
+    }
+
+    #[test]
+    fn convert_tokens_to_ids_test() {
+        let vocab =
+            Vocab::create_from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vocab.txt"))
+                .unwrap();
+        let tokenizer = BertTokenizer::new(vocab);
+
+        let tokens: Vec<String> = vec![
+            "good", "morning", ",", "i", "'", "m", "your", "teacher", ".",
+        ].into_iter().map(str::to_string).collect();
+
+        assert_eq!(tokenizer.convert_to_ids(&tokens), vec![2204, 2851, 1010, 1045, 1005, 1049, 2115, 3836, 1012]);
     }
 }
