@@ -17,3 +17,5 @@ python -m tf2onnx.convert --opset 16 --tflite mobilebert.tflite --output mobileb
 ```
 
 Then this example can be ran with `cargo run --release`.
+
+The differences with running the code in tract vs tflite can be found in `differences.txt`
