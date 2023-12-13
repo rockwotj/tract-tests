@@ -1,0 +1,2 @@
+Model inputs: ['input_ids', 'input_mask', 'segment_ids']
+Model outputs: ['end_logits', 'start_logits']

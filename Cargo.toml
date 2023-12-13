@@ -1,0 +1,14 @@
+[package]
+name = "bert"
+version = "0.0.0-dev"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.75"
+itertools = "0.12.0"
+regex = "1.10.2"
+rust_tokenizers = "8.1.1"
+tract-onnx = "0.20.22"
+tract-tflite = "0.20.22"
+unicode-normalization = "0.1.22"
+unicode_categories = "0.1.1"
