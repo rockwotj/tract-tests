@@ -8,7 +8,7 @@ use std::ops::RangeInclusive;
 use std::time::Instant;
 use std::{collections::HashMap, path::Path};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use tract_onnx::prelude::*;
 
 const MAX_SEQ_LEN: usize = 384;
@@ -26,10 +26,17 @@ impl BertQuestionAnswerer {
     pub fn new_from_files(vocab: impl AsRef<Path>, model: impl AsRef<Path>) -> Result<Self> {
         let vocab = tokenizer::Vocab::create_from_file(&vocab)?;
         let tokenizer = tokenizer::BertTokenizer::new(vocab);
-        let model = tract_onnx::onnx()
-            .model_for_path(model)?
-            .into_optimized()?
-            .into_runnable()?;
+        let model = match model.as_ref().extension().and_then(|s| s.to_str()) {
+            Some("tflite") => tract_tflite::tflite()
+                .model_for_path(model)?
+                .into_optimized()?
+                .into_runnable()?,
+            Some("onnx") => tract_onnx::onnx()
+                .model_for_path(model)?
+                .into_optimized()?
+                .into_runnable()?,
+            _ => bail!("unexpected model file extension {:?}", model.as_ref().extension()),
+        };
         return Ok(Self { tokenizer, model });
     }
 
@@ -145,7 +152,12 @@ impl BertQuestionAnswerer {
                     .iter()
                     .filter_map(|&end| {
                         let logit = start_logits[start] + end_logits[end];
-                        self.create_prediction(logit, start, end, &content_data.token_idx_to_word_idx_mapping)
+                        self.create_prediction(
+                            logit,
+                            start,
+                            end,
+                            &content_data.token_idx_to_word_idx_mapping,
+                        )
                     })
                     .collect_vec()
             })
