@@ -39,7 +39,10 @@ impl BertQuestionAnswerer {
                 .model_for_path(model)?
                 .into_optimized()?
                 .into_runnable()?,
-            _ => bail!("unexpected model file extension {:?}", model.as_ref().extension()),
+            _ => bail!(
+                "unexpected model file extension {:?}",
+                model.as_ref().extension()
+            ),
         };
         return Ok(Self { tokenizer, model });
     }
@@ -119,16 +122,17 @@ impl BertQuestionAnswerer {
         let input_ids = self.tokenizer.convert_to_ids(&tokens);
         let input_mask = vec![1; input_ids.len()];
 
+        type TensorType = i64;
         let input_ids_tensor: Tensor = create_input_tensor(
             input_ids
                 .iter()
-                .map(|i| i32::try_from(*i))
+                .map(|i| TensorType::try_from(*i))
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
         let input_mask_tensor: Tensor =
-            create_input_tensor(input_mask.into_iter().map(|x| x as i32).collect())?;
+            create_input_tensor(input_mask.into_iter().map(|x| x as TensorType).collect())?;
         let segment_ids_tensor: Tensor =
-            create_input_tensor(segment_ids.into_iter().map(|x| x as i32).collect())?;
+            create_input_tensor(segment_ids.into_iter().map(|x| x as TensorType).collect())?;
         Ok((
             input_ids_tensor,
             input_mask_tensor,
@@ -224,7 +228,7 @@ impl BertQuestionAnswerer {
 }
 
 fn main() -> Result<()> {
-    let oracle = BertQuestionAnswerer::new_from_files("./vocab.txt", "./mobilebert-opt.nnef")?;
+    let oracle = BertQuestionAnswerer::new_from_files("./vocab.txt", "./huggingface-mb.onnx")?;
     const PASSAGE: &str = "TensorFlow is a free and open-source software library for dataflow and \
 differentiable programming across a range of tasks. It is a symbolic math library, and \
 is also used for machine learning applications such as neural networks. It is used for \
@@ -233,15 +237,15 @@ team for internal Google use. It was released under the Apache License 2.0 on No
 9, 2015.";
     const QUESTION: &str = "Who developed TensorFlow?";
     let start = Instant::now();
-    for a in oracle.answer(PASSAGE, QUESTION)? {
+    if let Some(a) = oracle.answer(PASSAGE, QUESTION)?.first() {
         println!("{:?}", a);
     }
     println!("done: {:?}", Instant::now() - start);
     Ok(())
 }
 
-fn create_input_tensor(mut v: Vec<i32>) -> Result<Tensor> {
-    v.resize(MAX_SEQ_LEN, 0);
+fn create_input_tensor<T: Datum>(mut v: Vec<T>) -> Result<Tensor> {
+    v.resize(MAX_SEQ_LEN, Default::default());
     Ok(tract_ndarray::Array2::from_shape_vec((1, MAX_SEQ_LEN), v)?.into())
 }
 
